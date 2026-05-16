@@ -4,9 +4,8 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
-// Array de correos permitidos para acceder al panel de admin
-// Los correos ahora se leen desde las variables de entorno para no exponerlos en el código cliente.
-const ALLOWED_ADMIN_EMAILS = process.env.NEXT_PUBLIC_ADMIN_EMAILS 
+// Array de correos root definidos en el entorno (fallback de emergencia)
+const ROOT_ADMIN_EMAILS = process.env.NEXT_PUBLIC_ADMIN_EMAILS 
   ? process.env.NEXT_PUBLIC_ADMIN_EMAILS.split(',') 
   : [];
 
@@ -21,6 +20,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Función para verificar si un email es administrador
+  const verifyAdmin = async (email: string | undefined): Promise<boolean> => {
+    if (!email) return false;
+    
+    // Primero revisamos si es root admin
+    if (ROOT_ADMIN_EMAILS.includes(email)) return true;
+
+    // Si no es root, consultamos la tabla en Supabase
+    try {
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('email')
+        .eq('email', email)
+        .single();
+        
+      if (error) {
+        if (error.code !== 'PGRST116') console.error("Error verificando admin:", error);
+        return false;
+      }
+      
+      return !!data;
+    } catch (err) {
+      console.error("Error inesperado verificando admin:", err);
+      return false;
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -28,12 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        if (session.user.email && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+        const isAdmin = await verifyAdmin(session.user.email);
+        if (isAdmin) {
           if (mounted) setUser(session.user);
         } else {
           await supabase.auth.signOut();
           if (mounted) setUser(null);
-          alert("Acceso denegado: Tu cuenta no tiene permisos de administrador.");
+          window.location.href = "/";
         }
       } else {
         if (mounted) setUser(null);
@@ -46,12 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        if (session.user.email && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+        const isAdmin = await verifyAdmin(session.user.email);
+        if (isAdmin) {
           if (mounted) setUser(session.user);
         } else {
           await supabase.auth.signOut();
           if (mounted) setUser(null);
-          alert("Acceso denegado: Tu cuenta no tiene permisos de administrador.");
+          window.location.href = "/";
         }
       } else {
         if (mounted) setUser(null);
