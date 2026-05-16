@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 
 export default function Hero() {
     const [pedidosYaUrl, setPedidosYaUrl] = useState("https://www.pedidosyasv.com.sv/");
@@ -10,13 +9,10 @@ export default function Hero() {
     useEffect(() => {
         const fetchContactInfo = async () => {
             try {
-                const docRef = doc(db, "settings", "contact_info");
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.pedidosYa) {
-                        setPedidosYaUrl(data.pedidosYa);
-                    }
+                const { data, error } = await supabase.from('settings').select('pedidosYa').eq('id', 'contact_info').single();
+                if (error && error.code !== 'PGRST116') throw error;
+                if (data?.pedidosYa) {
+                    setPedidosYaUrl(data.pedidosYa);
                 }
             } catch (error) {
                 console.error("Error fetching contact info for Hero:", error);

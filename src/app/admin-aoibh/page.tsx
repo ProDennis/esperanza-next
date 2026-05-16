@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useRouter } from "next/navigation";
-import { db, auth } from "../../lib/firebase";
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
-import { signOut } from "firebase/auth";
+import { supabase } from "../../lib/supabase";
 import { Product } from "../../lib/types";
 
 export default function AdminDashboard() {
@@ -22,7 +20,8 @@ export default function AdminDashboard() {
     e.preventDefault();
     setSavingContact(true);
     try {
-      await setDoc(doc(db, "settings", "contact_info"), contactInfo);
+      const { error } = await supabase.from('settings').upsert({ id: 'contact_info', ...contactInfo });
+      if (error) throw error;
       alert("Información de contacto actualizada correctamente");
     } catch (error) {
       console.error("Error updating contact info:", error);
@@ -70,9 +69,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchProductsData = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "products"));
-        const productList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-        setProducts(productList);
+        const { data, error } = await supabase.from('products').select('*');
+        if (error) throw error;
+        setProducts(data || []);
       } catch (error) {
         console.error("Error fetching products:", error);
       } finally {
@@ -82,10 +81,13 @@ export default function AdminDashboard() {
 
     const fetchContactInfo = async () => {
       try {
-        const docRef = doc(db, "settings", "contact_info");
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setContactInfo(docSnap.data() as any);
+        const { data, error } = await supabase.from('settings').select('*').eq('id', 'contact_info').single();
+        if (error) {
+          if (error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
+        } else if (data) {
+          // Excluir la columna 'id' al actualizar el estado
+          const { id, ...restData } = data;
+          setContactInfo(restData as any);
         }
       } catch (error) {
         console.error("Error fetching contact info:", error);
@@ -99,7 +101,7 @@ export default function AdminDashboard() {
   }, [user]);
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
     router.push("/login");
   };
 
@@ -115,18 +117,19 @@ export default function AdminDashboard() {
     e.preventDefault();
     try {
       if (isEditing && currentId) {
-        await updateDoc(doc(db, "products", currentId), { ...formData });
+        const { error } = await supabase.from('products').update(formData).eq('id', currentId);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, "products"), formData);
+        const { error } = await supabase.from('products').insert([formData]);
+        if (error) throw error;
       }
       // Reset form
       setFormData({ name: "", image: "/logo.webp", description: "", price: 0, category: "tradicional", type: "pupusa" });
       setIsEditing(false);
       setCurrentId(null);
       // Re-fetch products after add/update
-      const querySnapshot = await getDocs(collection(db, "products"));
-      const productList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-      setProducts(productList);
+      const { data } = await supabase.from('products').select('*');
+      setProducts(data || []);
     } catch (error) {
       console.error("Error saving product:", error);
     }
@@ -141,11 +144,11 @@ export default function AdminDashboard() {
   const handleDelete = async (id: string) => {
     if (confirm("¿Estás seguro de eliminar este producto?")) {
       try {
-        await deleteDoc(doc(db, "products", id));
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
         // Re-fetch products after delete
-        const querySnapshot = await getDocs(collection(db, "products"));
-        const productList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-        setProducts(productList);
+        const { data } = await supabase.from('products').select('*');
+        setProducts(data || []);
       } catch (error) {
         console.error("Error deleting product:", error);
       }

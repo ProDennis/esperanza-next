@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 
 export default function Contact() {
     const [contactInfo, setContactInfo] = useState({
@@ -17,10 +16,10 @@ export default function Contact() {
     useEffect(() => {
         const fetchContactInfo = async () => {
             try {
-                const docRef = doc(db, "settings", "contact_info");
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    setContactInfo(prev => ({ ...prev, ...docSnap.data() }));
+                const { data, error } = await supabase.from('settings').select('*').eq('id', 'contact_info').single();
+                if (error && error.code !== 'PGRST116') throw error;
+                if (data) {
+                    setContactInfo(prev => ({ ...prev, ...data }));
                 }
             } catch (error) {
                 console.error("Error fetching contact info:", error);

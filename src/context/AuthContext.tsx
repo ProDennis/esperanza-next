@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 // Array de correos permitidos para acceder al panel de admin
 // Los correos ahora se leen desde las variables de entorno para no exponerlos en el código cliente.
@@ -22,24 +22,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        // Verificar si el correo está en la lista de permitidos
-        if (currentUser.email && ALLOWED_ADMIN_EMAILS.includes(currentUser.email)) {
-          setUser(currentUser);
+    let mounted = true;
+
+    async function getInitialSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        if (session.user.email && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+          if (mounted) setUser(session.user);
         } else {
-          // Si no está permitido, cerramos la sesión inmediatamente
-          await signOut(auth);
-          setUser(null);
-          // Opcional: Podrías disparar una alerta aquí o guardar un error en el estado global
+          await supabase.auth.signOut();
+          if (mounted) setUser(null);
           alert("Acceso denegado: Tu cuenta no tiene permisos de administrador.");
         }
       } else {
-        setUser(null);
+        if (mounted) setUser(null);
       }
-      setLoading(false);
+      
+      if (mounted) setLoading(false);
+    }
+
+    getInitialSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        if (session.user.email && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+          if (mounted) setUser(session.user);
+        } else {
+          await supabase.auth.signOut();
+          if (mounted) setUser(null);
+          alert("Acceso denegado: Tu cuenta no tiene permisos de administrador.");
+        }
+      } else {
+        if (mounted) setUser(null);
+      }
     });
-    return () => unsubscribe();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

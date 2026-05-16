@@ -1,25 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithPopup } from "firebase/auth";
-import { auth, googleProvider } from "../../lib/firebase";
-import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 import Image from "next/image";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
-  const router = useRouter();
 
   const handleGoogleLogin = async () => {
     setError("");
     try {
-      await signInWithPopup(auth, googleProvider);
-      router.push("/admin-aoibh");
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/admin-aoibh`,
+        },
+      });
+      if (error) throw error;
     } catch (err: any) {
       setError("Error al iniciar sesión con Google. Intenta nuevamente.");
       console.error(err);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">

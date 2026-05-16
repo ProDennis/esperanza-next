@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { supabase } from "../lib/supabase";
 import { Product } from "../lib/types";
 
 export default function FoodMenu() {
@@ -13,12 +12,9 @@ export default function FoodMenu() {
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                const querySnapshot = await getDocs(collection(db, "products"));
-                const data: Product[] = [];
-                querySnapshot.forEach((doc) => {
-                    data.push({ id: doc.id, ...doc.data() } as Product);
-                });
-                setMenu(data);
+                const { data, error } = await supabase.from('products').select('*');
+                if (error) throw error;
+                setMenu(data || []);
             } catch (error) {
                 console.error("Error fetching products:", error);
             } finally {
